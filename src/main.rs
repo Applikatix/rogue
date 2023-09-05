@@ -1,4 +1,4 @@
-use std::io::Result;
+use std::io::{self, Result, Write};
 
 use crossterm::{
     execute,
@@ -6,48 +6,38 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyEvent, KeyCode, KeyEventKind},
 };
-use rogue;
+use rogue::{self, Screen};
 
 fn main() -> Result<()> {
-    let mut out = rogue::Out::new();
-    let (room, mut player) = rogue::world(
-        5, 3,
+    let mut screen = io::stdout();
+    let (room, mut player) = rogue::Room::with_player(
         10, 5,
+        5, 3
     );
 
     terminal::enable_raw_mode()?;
     execute!(
-        out.screen,
+        screen,
         cursor::Hide,
         terminal::Clear(terminal::ClearType::All)
     )?;
 
+    screen.print(&rogue::Rect::from(&room))?;
+
     loop {
-        out.draw(&room, &player)?;
+        screen.print(&room)?.print(&player)?.flush()?;
         
-        match input()? {
-            KeyCode::Left => if player.pos.x > room.pos.x + 1 {
-                player.pos.x -= 1;
-            },
-            KeyCode::Right => if player.pos.x < room.pos.x + room.size.x {
-                player.pos.x += 1;
-            },
-            KeyCode::Up => if player.pos.y > room.pos.y + 1 {
-                player.pos.y -= 1;
-            },
-            KeyCode::Down => if player.pos.y < room.pos.y + room.size.y {
-                player.pos.y += 1;
-            },
+        match player.update(&room, input()?) {
             KeyCode::Esc => break,
-            _ => {},
+            _ => {}
         }
     }
 
     terminal::disable_raw_mode()?;
     execute!(
-        out.screen,
+        screen,
+        terminal::Clear(terminal::ClearType::All),
         cursor::Show,
-        terminal::Clear(terminal::ClearType::All)
     )?;
     println!("Game ended");
     
