@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     let mut screen = io::stdout();
     let (room, mut player) = rogue::Room::with_player(
         10, 5,
-        5, 3
+        5, 3,
     );
 
     terminal::enable_raw_mode()?;
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
         terminal::Clear(terminal::ClearType::All)
     )?;
 
-    screen.print(&rogue::Rect::from(&room))?;
+    screen.print_border(&room)?;
 
     loop {
         screen.print(&room)?.print(&player)?.flush()?;
@@ -36,10 +36,10 @@ fn main() -> Result<()> {
     terminal::disable_raw_mode()?;
     execute!(
         screen,
-        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
         cursor::Show,
     )?;
-    println!("Game ended");
+    println!("Goodbye");
     
     Ok(())
 }
