@@ -1,4 +1,4 @@
-use std::io::{self, Result, Write};
+use std::io::{self, Result, Write, Stdout};
 
 use crossterm::{
     execute,
@@ -6,14 +6,11 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyEvent, KeyCode, KeyEventKind},
 };
+
 use rogue::{self, Screen};
 
 fn main() -> Result<()> {
     let mut screen = io::stdout();
-    let (room, mut player) = rogue::Room::with_player(
-        10, 5,
-        5, 3,
-    );
 
     terminal::enable_raw_mode()?;
     execute!(
@@ -21,17 +18,8 @@ fn main() -> Result<()> {
         cursor::Hide,
         terminal::Clear(terminal::ClearType::All)
     )?;
-
-    screen.print_border(&room)?;
-
-    loop {
-        screen.print(&room)?.print(&player)?.flush()?;
-        
-        match player.update(&room, input()?) {
-            KeyCode::Esc => break,
-            _ => {}
-        }
-    }
+    
+    run(&mut screen)?;
 
     terminal::disable_raw_mode()?;
     execute!(
@@ -42,6 +30,24 @@ fn main() -> Result<()> {
     println!("Goodbye");
     
     Ok(())
+}
+
+fn run(screen: &mut Stdout) -> Result<()> {
+    let (room, mut player) = rogue::Room::with_player(
+        10, 5,
+        5, 3,
+    );
+
+    screen.print_border(&room)?;
+
+    loop {
+        screen.print(&room)?.print(&player)?.flush()?;
+        
+        match player.update(&room, input()?) {
+            KeyCode::Esc => break Ok(()),
+            _ => {}
+        }
+    }
 }
 
 fn input() -> Result<KeyCode> {

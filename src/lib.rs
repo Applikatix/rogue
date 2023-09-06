@@ -32,12 +32,11 @@ pub trait Drawable {
     }
 }
 
-struct Point { x: u16, y: u16 }
+#[derive(Clone, Copy)]
+pub struct Point { x: u16, y: u16 }
 
-impl Point {
-    fn contains(&self, p2: &Point) -> bool {
-        self.x >= p2.x && self.y >= p2.y
-    }
+pub trait Area {
+    fn contains(&self, p: &Point) -> bool;
 }
 
 pub struct Room {
@@ -63,9 +62,16 @@ impl Room {
     ) -> (Room, Object) {
         (Room::new(x, y, width, height), Object::player(x, y))
     }
+}
 
+impl Area for Room {
     fn contains(&self, p: &Point) -> bool {
-        p.contains(&self.p1) && self.p2.contains(p)
+        let Room { tile: _,
+            p1: Point { x: left, y: top },
+            p2: Point { x: right, y: bottom }
+        } = *self;
+
+        p.x >= left && p.x <= right && p.y >= top && p.y <= bottom
     }
 }
 
@@ -114,6 +120,69 @@ impl Drawable for Room {
     }
 }
 
+pub enum Dir {
+    X(u16),
+    Y(u16),
+}
+
+pub struct Path {
+    tile: StyledContent<char>,
+    start: Point,
+    end: Dir,
+}
+
+impl Path {
+    pub fn new(x: u16, y: u16, length: Dir) -> Path {
+        Path {
+            tile: '#'.dark_grey(),
+            start: Point { x, y },
+            end: match length {
+                Dir::X(len) => Dir::X(x + len - 1),
+                Dir::Y(len) => Dir::Y(y + len - 1),
+            },
+        }
+    }
+
+    pub fn with_player(x: u16, y: u16, length: Dir) -> (Path, Object) {
+        (Path::new(x, y, length), Object::player(x, y))
+    }
+}
+
+impl Area for Path {
+    fn contains(&self, p: &Point) -> bool {
+        match self.end {
+            Dir::X(end) =>
+                p.y == self.start.y &&
+                p.x >= self.start.x &&
+                p.x <= end,
+            Dir::Y(end) => 
+                p.x == self.start.x &&
+                p.y >= self.start.y &&
+                p.y <= end,
+        }
+    }
+}
+
+impl Drawable for Path {
+    fn draw(&self, screen: &mut impl Write) -> Result<()> {
+        match self.end {
+            Dir::X(end) => for col in self.start.x..=end {
+                queue!(screen,
+                    MoveTo(col, self.start.y),
+                    PrintStyledContent(self.tile)
+                )?;
+            },
+            Dir::Y(end) => for row in self.start.y..=end {
+                queue!(screen,
+                    MoveTo(self.start.x, row),
+                    PrintStyledContent(self.tile)
+                )?;
+            },
+        }
+        Ok(())
+    }
+}
+
 pub struct Object {
     character: StyledContent<char>,
     pos: Point,
@@ -124,17 +193,18 @@ impl Object {
         Object { character: '@'.yellow(), pos: Point { x, y } }
     }
 
-    pub fn update(&mut self, room: &Room, key: KeyCode) -> KeyCode {
+    pub fn update(&mut self, area: &impl Area, key: KeyCode) -> KeyCode {
         let point = match key {
             KeyCode::Left => Point { x: self.pos.x - 1, ..self.pos },
             KeyCode::Right => Point { x: self.pos.x + 1, ..self.pos },
             KeyCode::Up => Point { y: self.pos.y - 1, ..self.pos },
             KeyCode::Down => Point { y: self.pos.y + 1, ..self.pos },
-            _ => Point { ..self.pos },
+            _ => return key,
         };
-        if room.contains(&point) {
+        if area.contains(&point) {
             self.pos = point;
         }
+
         key
     }
 }
