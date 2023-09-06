@@ -3,13 +3,47 @@ use std::io::{Result, Write};
 use crossterm::{ queue,
     cursor::MoveTo,
     style::{PrintStyledContent, Stylize, StyledContent, Print},
-    event::KeyCode
+    event::{self, Event, KeyEvent, KeyCode, KeyEventKind},
 };
 
-pub trait Screen {
-    fn print(&mut self, item: &impl Drawable) -> Result<&mut Self>;
+pub fn run(screen: &mut impl Write) -> Result<()> {
+    let (room, mut player) = Room::with_player(
+        10, 5,
+        5, 3,
+    );
 
-    fn print_border(&mut self, item: &impl Drawable) -> Result<&mut Self>;
+    screen.frame(&room)?;
+
+    loop {
+        screen.print(&room)?.print(&player)?.flush()?;
+        
+        match player.update(&room, input()?) {
+            KeyCode::Esc => break Ok(()),
+            _ => {}
+        }
+    }
+}
+
+fn input() -> Result<KeyCode> {
+    loop {
+        if let Event::Key(key) = event::read()? {
+            let KeyEvent {
+                code,
+                modifiers: _,
+                kind,
+                state: _,
+            } = key;
+
+            if let KeyEventKind::Press = kind {
+                return Ok(code);
+            }
+        }
+    }
+}
+
+trait Screen {
+    fn print(&mut self, item: &impl Drawable) -> Result<&mut Self>;
+    fn frame(&mut self, item: &impl Drawable) -> Result<&mut Self>;
 }
 
 impl<T: Write> Screen for T {
@@ -18,13 +52,13 @@ impl<T: Write> Screen for T {
         Ok(self)
     }
 
-    fn print_border(&mut self, item: &impl Drawable) -> Result<&mut Self> {
+    fn frame(&mut self, item: &impl Drawable) -> Result<&mut Self> {
         item.border(self)?;
         Ok(self)
     }
 }
 
-pub trait Drawable {
+trait Drawable {
     fn draw(&self, screen: &mut impl Write) -> Result<()>;
 
     fn border(&self, _: &mut impl Write) -> Result<()> {
@@ -35,18 +69,18 @@ pub trait Drawable {
 #[derive(Clone, Copy)]
 pub struct Point { x: u16, y: u16 }
 
-pub trait Area {
+trait Area {
     fn contains(&self, p: &Point) -> bool;
 }
 
-pub struct Room {
+struct Room {
     tile: StyledContent<char>,
     p1: Point,
     p2: Point,
 }
 
 impl Room {
-    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Room {
+    fn new(x: u16, y: u16, width: u16, height: u16) -> Room {
         Room {
             tile: '.'.dark_grey(),
             p1: Point { x, y },
@@ -54,7 +88,7 @@ impl Room {
         }
     }
 
-    pub fn with_player(
+    fn with_player(
         x: u16,
         y: u16,
         width: u16,
@@ -120,19 +154,19 @@ impl Drawable for Room {
     }
 }
 
-pub enum Dir {
+enum Dir {
     X(u16),
     Y(u16),
 }
 
-pub struct Path {
+struct Path {
     tile: StyledContent<char>,
     start: Point,
     end: Dir,
 }
 
 impl Path {
-    pub fn new(x: u16, y: u16, length: Dir) -> Path {
+    fn new(x: u16, y: u16, length: Dir) -> Path {
         Path {
             tile: '#'.dark_grey(),
             start: Point { x, y },
@@ -143,7 +177,7 @@ impl Path {
         }
     }
 
-    pub fn with_player(x: u16, y: u16, length: Dir) -> (Path, Object) {
+    fn with_player(x: u16, y: u16, length: Dir) -> (Path, Object) {
         (Path::new(x, y, length), Object::player(x, y))
     }
 }
@@ -183,17 +217,17 @@ impl Drawable for Path {
     }
 }
 
-pub struct Object {
+struct Object {
     character: StyledContent<char>,
     pos: Point,
 }
 
 impl Object {
-    pub fn player(x: u16, y: u16) -> Object {
+    fn player(x: u16, y: u16) -> Object {
         Object { character: '@'.yellow(), pos: Point { x, y } }
     }
 
-    pub fn update(&mut self, area: &impl Area, key: KeyCode) -> KeyCode {
+    fn update(&mut self, area: &impl Area, key: KeyCode) -> KeyCode {
         let point = match key {
             KeyCode::Left => Point { x: self.pos.x - 1, ..self.pos },
             KeyCode::Right => Point { x: self.pos.x + 1, ..self.pos },
