@@ -2,9 +2,8 @@ use std::io::{self, Result};
 
 use crossterm::{execute, terminal, cursor};
 
-use rogue::run;
-
 fn main() -> Result<()> {
+    //Setup
     let mut screen = io::stdout();
 
     terminal::enable_raw_mode()?;
@@ -14,8 +13,10 @@ fn main() -> Result<()> {
         terminal::Clear(terminal::ClearType::All)
     )?;
     
-    run(&mut screen)?;
+    //Run game
+    rogue::run(&mut screen)?;
 
+    //Cleanup
     terminal::disable_raw_mode()?;
     execute!(
         screen,
