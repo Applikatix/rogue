@@ -1,0 +1,23 @@
+# Færdig
+  * Spilleren kan gå rundt på et kort
+  # Udseende
+    * Vægge
+    * Døre
+
+# Igang
+  # Kort
+    * Synlighed
+
+# Mål
+  # GUI
+    * Menuer
+    * HUD
+  # Kort
+    * Random level generation
+  # Spiller
+    * Interaktion med in-game objekter
+    * Spiller inventar
+    * Karakter stats
+  # Fare
+    * Fjender
+    * Kamp
