@@ -8,11 +8,19 @@
   # Kort
     * Synlighed
 
+# Næste
+  # Kort
+    * Synlighed
+    * Irregulærer rum
+    * Random level generation
+
 # Mål
   # GUI
     * Menuer
     * HUD
   # Kort
+    * Synlighed
+    * Irregulærer rum
     * Random level generation
   # Spiller
     * Interaktion med in-game objekter

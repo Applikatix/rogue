@@ -4,94 +4,152 @@ pub mod util;
 #[cfg(test)]
 mod tests;
 
-use std::rc::Rc;
+use std::collections::HashSet;
+
 use crossterm::event::KeyCode;
+use petgraph::{Graph, Undirected, graph::NodeIndex};
 
-use points::{Position, Coord, Coordinate, Point};
-use util::average;
-
-pub fn create_world() -> GameWorld {
-    let map = vec![
-        Rc::new(Room::new(10, 5, 5, 3)),
-        Rc::new(Path::new(15, 6, Coord::X(5), Doors::Start)),
-        Rc::new(Path::new(20, 6, Coord::Y(4), Doors::End)),
-        Rc::new(Room::new(15, 10, 10, 4)),
-    ];
-
-    let player = GameObj {
-        kind: ObjKind::Player,
-        pos: map[0].middle(),
-        area: Rc::clone(&map[0]),
-    };
-
-    GameWorld { player, map }
-}
+use points::{
+    Point, Position, Coord::{X, Y}, Coordinate,
+    Rect, Space, Long, Straight, Area,
+};
 
 pub struct GameWorld {
     player: GameObj,
-    map: Vec<Rc<MapElem>>,
+    map: Map,
+    current_area: NodeIndex,
 }
-
 impl GameWorld {
     pub fn next(&self, key: KeyCode) -> Next {
-        let pos = match key {
-            KeyCode::Left => self.player.pos - Coord::X(1),
-            KeyCode::Right => self.player.pos + Coord::X(1),
-            KeyCode::Up => self.player.pos - Coord::Y(1),
-            KeyCode::Down => self.player.pos + Coord::Y(1),
-            _ => return Next::from(Change::None),
+        let p = match key {
+            KeyCode::Left => self.player.pos - X(1),
+            KeyCode::Right => self.player.pos + X(1),
+            KeyCode::Up => self.player.pos - Y(1),
+            KeyCode::Down => self.player.pos + Y(1),
+            _ => return Next(Change::None)
         };
 
-        match self.contains(pos) {
-            Some(area) => Next::from(Change::Pos(
-                GameObj { pos, area, ..self.player }
-            )),
-            None => Next::from(Change::None),
+        if self.map[self.current_area].contains(p) {
+            return Next(Change::Pos(p));
+        }
+        for i in self.map.neighbors(self.current_area) {
+            if self.map[i].contains(p) {
+                return Next(Change::Area(p, i));
+            }
+        }
+        Next(Change::None)
+    }
+
+    pub fn update(&mut self, Next(change): Next) {
+        if let Change::Pos(pos) = change {
+            self.player = self.player.update_pos(pos);
+        } else if let Change::Area(pos, area) = change {
+            self.player = self.player.update_pos(pos);
+            self.current_area = area;
+        }
+    }
+}
+
+struct Map(Graph<MapElem, (), Undirected>);
+impl Map {
+    fn vis_from(&self, p: Position) -> Submap {
+        let mut set = HashSet::new();
+        if let Some(i) = self.contains_at_index(p) {
+            self.add_vis_areas(&mut set, i);
+        }
+        set
+    }
+
+    fn add_vis_areas(&self, set: &mut Submap, i: NodeIndex) {
+        if !set.insert(i) {
+            return;
+        }
+        for area in self.neighbors(i) {
+            if let MapElem::Door(_) = self[area] {
+                set.insert(area);
+            } else {
+                self.add_vis_areas(set, area);
+            }
         }
     }
 
-    pub fn update(&mut self, next: Next) {
-        if let Change::Pos(player) = Change::from(next) {
-            self.player = player;
-        }
+    fn rooms(&self) -> impl Iterator<Item = &Space> {
+        self.node_weights().filter_map(|area| match area {
+            MapElem::Room(room) => Some(room),
+            _ => None,
+        })
     }
 
-    fn contains(&self, p: Position) -> Option<Rc<MapElem>> {
-        for area in self.map.iter() {
-            if area.contains(p) {
-                return Some(Rc::clone(area));
+    fn contains_at_index(&self, p: Position) -> Option<NodeIndex> {
+        for i in self.node_indices() {
+            if self[i].contains(p) {
+                return Some(i);
             }
         }
         None
     }
 }
 
-pub struct Next{
-    change: Change,
+impl std::ops::Deref for Map {
+    type Target = Graph<MapElem, (), Undirected>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for Map {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
+type Submap = HashSet<NodeIndex>;
+
+#[derive(Clone, Copy, Default)]
+pub struct Next(Change);
+
+#[derive(Clone, Copy, Default)]
 enum Change {
-    Pos(GameObj),
-    None
+    None,
+    #[default]
+    Init,
+    Pos(Position),
+    Area(Position, NodeIndex),
 }
 
-impl From<Change> for Next {
-    fn from(change: Change) -> Self {
-        Next { change }
+#[derive(Clone, Default)]
+enum MapElem {
+    Room(Space),
+    Hall(Straight),
+    Door(Position),
+    #[default]
+    Void,
+}
+
+impl Area for MapElem {
+    fn contains(&self, p: Position) -> bool {
+        match self {
+            MapElem::Room(room) => room.contains(p),
+            MapElem::Hall(hall) => hall.contains(p),
+            MapElem::Door(door) => door.contains(p),
+            _ => false,
+        }
+    }
+
+    fn middle(&self) -> Position {
+        match self {
+            MapElem::Room(room) => room.middle(),
+            MapElem::Hall(hall) => hall.middle(),
+            MapElem::Door(door) => door.middle(),
+            _ => panic!("out of bounds"),
+        }
     }
 }
 
-impl From<Next> for Change {
-    fn from(next: Next) -> Self {
-        next.change
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct GameObj {
     kind: ObjKind,
     pos: Position,
-    area: Rc<MapElem>,
 }
 
 #[derive(Clone, Copy)]
@@ -99,72 +157,122 @@ enum ObjKind {
     Player,
 }
 
-// Map elements/walkable areas.
-enum MapElem {
-    R(Room),
-    P(Path),
-}
-
-struct Room { p1: Position, p2: Position }
-struct Path { p1: Position, c2: Coordinate, doors: Doors }
-
-#[derive(Clone, Copy)]
-enum Doors { None, Start, End, Both }
-
-impl Room {
-    fn new(x: u16, width: u16, y: u16, height: u16) -> MapElem {
-        MapElem::R(Self {
-            p1: Point { x, y },
-            p2: Point { x: x + width, y: y + height },
-        })
+impl GameObj {
+    fn update_pos(&self, pos: Position) -> Self {
+        GameObj { pos, ..*self }
     }
 }
 
-impl Path {
-    fn new(x: u16, y: u16, length: Coordinate, doors: Doors) -> MapElem {
-        MapElem::P(match length {
-            Coord::X(cx) => Self {
-                p1: Point { x, y }, c2: Coord::X(x + cx), doors,
-            },
-            Coord::Y(cy) => Self {
-                p1: Point { x, y }, c2: Coord::Y(y + cy), doors,
-            },
-        })
-    }
+pub fn custom_world() -> GameWorld {
+    let mut map = Map(Graph::new_undirected());
 
-    fn end_points(&self) -> (Position, Position) {
-        match self.c2 {
-            Coord::X(cx) => (self.p1, Point { x: cx - 1, ..self.p1 }),
-            Coord::Y(cy) => (self.p1, Point { y: cy - 1, ..self.p1 }),
+    let a = map.add_node(room(10, 2, 5, 3));
+    let b = map.add_node(room(5, 8, 11, 4));
+    let c = map.add_node(room(24, 10, 8, 3));
+    let d = map.add_node(room(25, 1, 2, 5));
+    //let e = map.add_node(room(28, 1, 4, 3));
+    let a1 = map.add_node(door(15, 3));
+    let b1 = map.add_node(door(16, 9));
+    let c1 = map.add_node(door(23, 10));
+    let c2 = map.add_node(door(26, 9));
+    let d1 = map.add_node(door(26, 6));
+    //let de = map.add_node(door(27, 2));
+    let p = map.add_node(hall(18, 3, Y(8)));
+    let a1p = map.add_node(hall(16, 3, X(2)));
+    let b1p = map.add_node(hall(17, 9, X(1)));
+    let pc1 = map.add_node(hall(19, 10, X(4)));
+    let d1c2 = map.add_node(hall(26, 7, Y(2)));
+
+    map.extend_with_edges(&[
+        (a, a1), (b, b1), (c, c1), (c, c2), (d, d1), //(d, de), (de, e),
+        (a1, a1p), (a1p, p),
+        (b1, b1p), (b1p, p),
+        (p, pc1), (pc1, c1),
+        (d1, d1c2), (d1c2, c2),
+    ]);
+
+    let player = GameObj {
+        kind: ObjKind::Player,
+        pos: map[a].middle(),
+    };
+
+    GameWorld { player, map, current_area: a }
+}
+
+fn room(x: u16, y: u16, w: u16, h: u16) -> MapElem {
+    MapElem::Room(Rect::new(x, y, w, h))
+}
+
+fn hall(x: u16, y: u16, l: Coordinate) -> MapElem {
+    MapElem::Hall(Long::new(x, y, l))
+}
+
+fn door(x: u16, y: u16) -> MapElem {
+    MapElem::Door(Point { x, y })
+}
+
+//Line of sight
+impl Map {
+    fn visible_tiles(&self, p: Position) -> impl Iterator<Item = Tile> + '_ {
+        let mut tiles = vec![self.get_tile(p)];
+
+        for walk in [
+            |p: Position| Point { x: p.x + 1, ..p },
+            |p: Position| Point { x: p.x - 1, ..p },
+            |p: Position| Point { y: p.y + 1, ..p },
+            |p: Position| Point { y: p.y - 1, ..p },
+            |p: Position| Point { x: p.x + 1, y: p.y + 1 },
+            |p: Position| Point { x: p.x + 1, y: p.y - 1 },
+            |p: Position| Point { x: p.x - 1, y: p.y + 1 },
+            |p: Position| Point { x: p.x - 1, y: p.y - 1 },
+        ] {
+            let mut pos = walk(p);
+            while let Some(kind) = self.contains_kind(pos) {
+                tiles.push(Tile { pos, kind });
+                pos = walk(pos);
+            }
         }
+        tiles.into_iter()
+    }
+
+    fn get_tile(&self, p: Position) -> Tile {
+        for area in self.node_weights() {
+            if area.contains(p) {
+                return Tile { pos: p, kind: area.into() };
+            }
+        }
+        Tile { pos: p, kind: TileKind::Void }
+    }
+
+    fn contains_kind(&self, p: Position) -> Option<TileKind> {
+        for area in self.node_weights() {
+            if area.contains(p) {
+                return Some(area.into());
+            }
+        }
+        None
     }
 }
 
-impl MapElem {
-    fn contains(&self, p: Position) -> bool {
-        match self {
-            Self::R(Room { p1, p2 }) =>
-                p1.x <= p.x && p.x < p2.x &&
-                p1.y <= p.y && p.y < p2.y,
-            Self::P(Path { p1, c2, doors: _ }) =>
-            match c2 {
-                Coord::X(cx) => p1.y == p.y && p1.x <= p.x && p.x < *cx,
-                Coord::Y(cy) => p1.x == p.x && p1.y <= p.y && p.y < *cy,
-            },
-        }
-    }
+struct Tile {
+    pos: Position,
+    kind: TileKind,
+}
 
-    fn middle(&self) -> Position {
-        match self {
-            Self::R(Room { p1, p2 }) => Point {
-                x: average(p1.x, p2.x),
-                y: average(p1.y, p2.y),
-            },
-            Self::P(Path { p1, c2, doors: _ }) =>
-            match c2 {
-                Coord::X(cx) => Point { x: average(p1.x, *cx), ..*p1 },
-                Coord::Y(cy) => Point { y: average(p1.y, *cy), ..*p1 },
-            },
+enum TileKind {
+    Void,
+    Room,
+    Hall,
+    Door,
+    _Wall,
+}
+impl From<&MapElem> for TileKind {
+    fn from(area: &MapElem) -> Self {
+        match area {
+            MapElem::Room(_) => Self::Room,
+            MapElem::Hall(_) => Self::Hall,
+            MapElem::Door(_) => Self::Door,
+            MapElem::Void => Self::Void,
         }
     }
 }
