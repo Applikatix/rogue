@@ -1,11 +1,11 @@
-mod arithmatic;
+pub mod arithmatic;
 
 use std::{ops::Add, iter};
 
 use crate::util::average;
 
 pub type Space = Rect<u16>;
-pub type Straight = Long<u16>;
+pub type Straight = Line<u16>;
 pub type Position = Point<u16>;
 pub type Coordinate = Coord<u16>;
 
@@ -19,7 +19,7 @@ pub enum Coord<N> { X(N), Y(N) }
 pub struct Rect<N>{ pub p1: Point<N>, pub p2: Point<N> }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Long<N>{ pub p1: Point<N>, pub c2: Coord<N> }
+pub struct Line<N>{ pub p1: Point<N>, pub c2: Coord<N> }
 
 //Convenience functions for creating rooms and paths.
 impl<N: Add<Output = N> + Copy> Rect<N> {
@@ -31,12 +31,40 @@ impl<N: Add<Output = N> + Copy> Rect<N> {
     }
 }
 
-impl<N: Add<Output = N> + Copy> Long<N> {
-    pub fn new(x: N, y: N, length: Coord<N>) -> Long<N> {
-        match length {
-            Coord::X(cx) => Self { p1: Point { x, y }, c2: Coord::X(x + cx) },
-            Coord::Y(cy) => Self { p1: Point { x, y }, c2: Coord::Y(y + cy) },
+impl<N: Add<Output = N> + Copy> Line<N> {
+    pub fn new(x: N, y: N, length: Coord<N>) -> Line<N> { match length {
+        Coord::X(cx) => Self { p1: Point { x, y }, c2: Coord::X(x + cx) },
+        Coord::Y(cy) => Self { p1: Point { x, y }, c2: Coord::Y(y + cy) },
+    }}
+}
+
+//Moving position
+use Move::*;
+#[derive(Clone, Copy)]
+pub enum Move { Up, Down, Left, Right, LU, LD, RU, RD } impl Move {
+    fn r#move(self, p: Position) -> Position {
+        match self {
+            Up => Point { y: p.y - 1, ..p },
+            Down => Point { y: p.y + 1, ..p },
+            Left => Point { x: p.x - 1, ..p },
+            Right => Point { x: p.x + 1, ..p },
+            LU => Point { x: p.x - 1, y: p.y - 1 },
+            LD => Point { x: p.x - 1, y: p.y + 1 },
+            RU => Point { x: p.x + 1, y: p.y - 1 },
+            RD => Point { x: p.x + 1, y: p.y + 1 },
         }
+    }
+
+    pub fn mover(self) -> impl Fn(Position) -> Position {
+        move |p| self.r#move(p)
+    }
+
+    pub fn iter() -> impl Iterator<Item = Move> {
+        [Up, Down, Left, Right, LU, LD, RU, RD].iter().copied()
+    }
+
+    pub fn movers() -> impl Iterator<Item = impl Fn(Position) -> Position> {
+        Self::iter().map(|m| m.mover())
     }
 }
 
@@ -76,7 +104,7 @@ impl Area for Space {
 
 impl Area for Straight {
     fn contains(&self, p: Position) -> bool {
-        let Long { p1, c2 } = *self;
+        let Line { p1, c2 } = *self;
 
         match c2 {
             Coord::X(cx) => p1.y == p.y && p1.x <= p.x && p.x < cx,
@@ -85,7 +113,7 @@ impl Area for Straight {
     }
 
     fn middle(&self) -> Position {
-        let Long { p1, c2 } = *self;
+        let Line { p1, c2 } = *self;
         
         match c2 {
             Coord::X(cx) => Point { x: average(p1.x, cx), ..p1 },
@@ -104,8 +132,7 @@ pub trait Points: Area + IntoIterator<Item = Position> {
 pub struct Strip {
     pub next: Position,
     end: u16,
-}
-impl Iterator for Strip {
+} impl Iterator for Strip {
     type Item = Position;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -126,8 +153,7 @@ impl<T> IntoIterator for Point<T> {
     fn into_iter(self) -> Self::IntoIter {
         iter::once(self)
     }
-}
-impl<T: Copy> IntoIterator for &Point<T> {
+} impl<T: Copy> IntoIterator for &Point<T> {
     type Item = Point<T>;
     type IntoIter = iter::Once<Self::Item>;
 
@@ -152,8 +178,7 @@ impl IntoIterator for Space {
     fn into_iter(self) -> Self::IntoIter {
         RectPoints { next: self.p1, left: self.p1.x, end: self.p2 }
     }
-}
-impl IntoIterator for &Space {
+} impl IntoIterator for &Space {
     type Item = Position;
     type IntoIter = RectPoints;
 
@@ -161,21 +186,11 @@ impl IntoIterator for &Space {
         RectPoints { next: self.p1, left: self.p1.x, end: self.p2 }
     }
 }
-
-impl Points for Space {
-    type StripsIter = RectStrips;
-
-    fn strips(self) -> Self::StripsIter {
-        RectStrips { next: self.p1, end: self.p2 }
-    }
-}
-
 pub struct RectPoints {
     next: Position,
     left: u16,
     end: Position,
-}
-impl Iterator for RectPoints {
+} impl Iterator for RectPoints {
     type Item = Position;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -196,11 +211,17 @@ impl Iterator for RectPoints {
     }
 }
 
+impl Points for Space {
+    type StripsIter = RectStrips;
+
+    fn strips(self) -> Self::StripsIter {
+        RectStrips { next: self.p1, end: self.p2 }
+    }
+} 
 pub struct RectStrips {
     next: Position,
     end: Position,
-}
-impl Iterator for RectStrips {
+} impl Iterator for RectStrips {
     type Item = Strip;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -221,8 +242,7 @@ impl IntoIterator for Straight {
     fn into_iter(self) -> Self::IntoIter {
         LongPoints { next: self.p1, end: self.c2 }
     }
-}
-impl IntoIterator for &Straight {
+} impl IntoIterator for &Straight {
     type Item = Position;
     type IntoIter = LongPoints;
 
@@ -230,20 +250,10 @@ impl IntoIterator for &Straight {
         LongPoints { next: self.p1, end: self.c2 }
     }
 }
-
-impl Points for Straight {
-    type StripsIter = LongStrips;
-
-    fn strips(self) -> Self::StripsIter {
-        LongStrips { next: self.p1, end: Some(self.c2) }
-    }
-}
-
 pub struct LongPoints {
     next: Position,
     end: Coordinate,
-}
-impl Iterator for LongPoints {
+} impl Iterator for LongPoints {
     type Item = Position;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -262,11 +272,17 @@ impl Iterator for LongPoints {
     }
 }
 
+impl Points for Straight {
+    type StripsIter = LongStrips;
+
+    fn strips(self) -> Self::StripsIter {
+        LongStrips { next: self.p1, end: Some(self.c2) }
+    }
+}
 pub struct LongStrips {
     next: Position,
     end: Option<Coordinate>,
-}
-impl Iterator for LongStrips {
+} impl Iterator for LongStrips {
     type Item = Strip;
 
     fn next(&mut self) -> Option<Self::Item> {

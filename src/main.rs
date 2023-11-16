@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     execute!(screen, cursor::Hide, CLEAR_ALL)?;
     
     //Run game
-    run(&mut screen, FeaturesEnabled::_Exp)?;
+    run(&mut screen)?;
 
     //Cleanup
     terminal::disable_raw_mode()?;
@@ -22,14 +22,10 @@ fn main() -> Result<()> {
 
 /// Repeatedly takes input from the player and writes to the screen.
 /// Function exits when player presses escape or error occurs.
-fn run(out: &mut impl Write, features: FeaturesEnabled) -> Result<()> {
+fn run(out: &mut impl Write) -> Result<()> {
     let mut world = rogue::custom_world();
 
-    match features {
-        FeaturesEnabled::_None => world.print_all(out, Default::default()),
-        FeaturesEnabled::_Vis => world.print(out, Default::default()),
-        FeaturesEnabled::_Exp => world.print_exp(out, Default::default()),
-    }?;
+    world.print_alt(out, Default::default())?;
 
     loop {
         let key = rogue::util::input()?;
@@ -38,17 +34,7 @@ fn run(out: &mut impl Write, features: FeaturesEnabled) -> Result<()> {
         }
 
         let next = world.next(key);
-        match features {
-            FeaturesEnabled::_None => world.print_all(out, next),
-            FeaturesEnabled::_Vis => world.print(out, next),
-            FeaturesEnabled::_Exp => world.print_exp(out, next),
-        }?;
+        world.print_alt(out, next)?;
         world.update(next);
     }
-}
-
-enum FeaturesEnabled {
-    _None,
-    _Vis,
-    _Exp,
 }
