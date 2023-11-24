@@ -70,7 +70,7 @@ enum Change {
 
 struct Map(Graph<MapElem, (), Undirected>); impl Map {
     fn visible_tiles(&self, p: Position) -> TileMap {
-        let mut tiles = HashMap::new();
+        let mut tiles = TileMap(HashMap::new());
 
         let is_floor = |pos| {
             if let Some(tile) = self.contains_tile(pos) {
@@ -89,57 +89,62 @@ struct Map(Graph<MapElem, (), Undirected>); impl Map {
         fov::compute(p, is_floor, add_visible);
         tiles.insert(p, TileKind::Obj(ObjKind::Player));
 
-        tiles.into()
+        tiles
     }
 
     fn get_tile(&self, p: Position) -> Option<TileKind> {
-        for area in self.node_weights() {
-            if area.contains(p) {
-                return Some(area.into());
-            }
+        if let res @ Some(_) = self.contains_tile(p) {
+            return res;
         }
-        for wall in self.walls() {
-            if wall.contains(p) {
-                return Some(TileKind::Wall(wall.c2.into()));
-            }
-        }
-        None
-    }
-
-    fn contains_tile(&self, p: Position) -> Option<TileKind> {
-        for area in self.node_weights() {
-            if area.contains(p) {
-                return Some(area.into());
+        for (wall, dir) in self.walls() {
+            if p == wall {
+                return Some(TileKind::Wall(dir));
             }
         }
         None
     }
 
-    fn walls(&self) -> Vec<Straight> {
-        let mut walls = Vec::new();
+    fn contains_tile(&self, p: Position) -> Option<TileKind> { use TileKind::*;
+        for area in self.node_weights() {
+            if area.contains(p) {
+                return match area {
+                    MapElem::Room(_) => Some(Room),
+                    MapElem::Hall(hall) => Some(Hall(hall.c2.into())),
+                    MapElem::Door(_) => Some(Door),
+                    MapElem::Void => None,
+                };
+            }
+        }
+        None
+    }
+
+    fn walls(&self) -> impl Iterator<Item = (Position, Dir)> {
+        let mut points = HashMap::new();
 
         for room in self.rooms() {
-            let Rect {
-                p1: Point { x, y },
-                p2: Point { x: right, y: bottom },
-            } = *room;
-            let (left, top) = (x - 1, y - 1);
+            let (left, right, top, bottom) = perimeter(*room);
 
-            walls.push(Line { p1: Point { x, y: top }, c2: X(right) });
-            walls.push(Line { p1: Point { x, y: bottom }, c2: X(right) });
-            walls.push(Line {
-                p1: Point { x: left, y: top },
-                c2: Y(bottom + 1)
-            });
-            walls.push(Line {
-                p1: Point { x: right, y: top },
-                c2: Y(bottom + 1)
-            });
+            points.insert(Point { x: left, y: top }, Dir::UL);
+            points.insert(Point { x: right, y: top }, Dir::UR);
+            points.insert(Point { x: left, y: bottom }, Dir::DL);
+            points.insert(Point { x: right, y: bottom }, Dir::DR);
+
+            for x in room.p1.x..right {
+                points.insert(Point { x, y: top }, Dir::Hor);
+                points.insert(Point { x, y: bottom }, Dir::Hor);
+            }
+            for y in room.p1.y..bottom {
+                points.insert(Point { x: left, y }, Dir::Ver);
+                points.insert(Point { x: right, y }, Dir::Ver);
+            }
+            
+            fn perimeter(room: Space) -> (u16, u16, u16, u16) {
+                (room.p1.x - 1, room.p2.x, room.p1.y - 1, room.p2.y)
+            }
         }
-
-        walls
+        points.into_iter()
     }
-    
+
     fn rooms(&self) -> impl Iterator<Item = &Space> {
         self.node_weights().filter_map(|area| match area {
             MapElem::Room(room) => Some(room),
@@ -167,7 +172,6 @@ struct Tile {
 }
 #[derive(Clone, Copy, PartialEq, EnumIs)]
 enum TileKind {
-    Void,
     Obj(ObjKind),
     Door,
     Room,
@@ -185,7 +189,7 @@ enum ObjKind {
 #[derive(Clone, Copy, PartialEq)]
 enum Dir { //None,
     //Up, Down, Left, Right,
-    Hor, Ver, //UL, UR, DL, DR,
+    Hor, Ver, UL, UR, DL, DR,
     //UHor, DHor, VerL, VerR,
     //All,
 }
@@ -267,28 +271,12 @@ fn door(x: u16, y: u16) -> MapElem {
 // #Diverse implementeringer
 
 //From
-impl From<HashMap<Position, TileKind>> for TileMap {
-    fn from(hashmap: HashMap<Position, TileKind>) -> Self {
-        Self(hashmap)
-    }
-}
-
 impl From<(&Position, &TileKind)> for Tile {
     fn from((pos, kind): (&Position, &TileKind)) -> Self {
         Self { pos: *pos, kind: *kind }
     }
 }
 
-impl From<&MapElem> for TileKind {
-    fn from(area: &MapElem) -> Self {
-        match area {
-            MapElem::Room(_) => Self::Room,
-            MapElem::Hall(hall) => Self::Hall(hall.c2.into()),
-            MapElem::Door(_) => Self::Door,
-            MapElem::Void => Self::Void,
-        }
-    }
-}
 impl<N> From<Coord<N>> for Dir {
     fn from(coord: Coord<N>) -> Self {
         match coord {

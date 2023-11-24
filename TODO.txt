@@ -10,7 +10,6 @@
 
 # Næste
   # Kort
-    * Synlighed
     * Irregulærer rum
     * Random level generation
 

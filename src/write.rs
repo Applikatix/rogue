@@ -65,7 +65,6 @@ impl Tile {
             Hall(_) => queue!(out, Print('░')),
             Wall(dir) => queue!(out, Print(char::from(dir))),
             Obj(Player) => queue!(out, Print('@')),
-            _ => Ok(()),
         }
     }
 
@@ -86,7 +85,7 @@ impl From<Dir> for char {
     fn from(dir: Dir) -> Self { use super::Dir::*;
         match dir { //None => '■',
             //Up => '╴', Down => '╶', Left => '╵', Right => '╷',
-            Hor => '─', Ver => '│', //UL => '┌', UR => '┐', DL => '└', DR => '┘',
+            Hor => '─', Ver => '│', UL => '┌', UR => '┐', DL => '└', DR => '┘',
             //UHor => '┴', DHor => '┬', VerL => '┤', VerR => '├',
             //All => '┼',
         }
