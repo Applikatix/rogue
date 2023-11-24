@@ -1,53 +1,116 @@
-use std::collections::HashSet;
+use num_rational::Ratio;
+use {strum::IntoEnumIterator, strum_macros::{EnumIter, EnumIs}};
 
 use crate::points::{Position, Point};
 
-/// An absolute position on a grid.
-type Absolute = Position;
 /// A position relative to the origin (0, 0) where x >= y.
 type Relative = Position;
+/*
+    3 |       X
+    2 |     X X
+    1 |   X X X
+    0 | @ X X X
+    y + - - - -
+      x 0 1 2 3
+*/
+type Slope = Ratio<u16>;
 
-pub fn compute(
-    origin: Absolute,
-    area_contains: impl Fn(Absolute) -> bool,
-    mark_visible: &mut impl FnMut(Absolute),
+pub fn _compute_exp(
+    origin: Position,
+    is_floor: impl Fn(Position) -> bool,
+    mut add_visible: impl FnMut(Position),
 ) {
-    mark_visible(origin);
+    add_visible(origin);
+    let oct = Octant { origin, section: OctSection::RightUp };
+    
+    let mut columns = vec![Col::first()];
+    'columns: while let Some(col) = columns.pop() { use Is::*;
+        let mut prev = NA;
+        for rel in col.points() {
+            let abs = oct.absolute(rel);
+            let curr = if is_floor(abs) { Floor } else { Wall };
 
-    for oct in Octant::iter_from(origin) {
-        let is_floor =
-            |p: Relative| area_contains(oct.to_absolute(p));
-        let reveal =
-            |p: Relative| mark_visible(oct.to_absolute(p));
+            if curr.is_wall() || col.is_symmetric(rel) {
+                add_visible(abs);
+            }
+            if prev.is_floor() && curr.is_wall() {
+                columns.push(col.top_slope(rel).next());
+            } else if prev.is_wall() && curr.is_floor() {
+                columns.push(col.bottom_slope(rel));
+                continue 'columns;
+            }
+            prev = curr;
+        }
+        if prev.is_floor() {
+            columns.push(col.next());
+        }
     }
+    #[derive(EnumIs)]
+    enum Is { Wall, Floor, NA }
+}
+
+/// Shadowcasting FOV function.
+pub fn compute(
+    origin: Position,
+    is_floor: impl Fn(Position) -> bool,
+    mut add_visible: impl FnMut(Position),
+) {
+    add_visible(origin);
+    for oct in Octant::iter_from(origin) {
+        let mut columns = vec![Col::first()];
+        'columns: while let Some(col) = columns.pop() { use Is::*;
+            let mut prev = NA;
+            for rel in col.points() {
+                let abs = oct.absolute(rel);
+                let curr = if is_floor(abs) { Floor } else { Wall };
+
+                if curr.is_wall() || col.is_symmetric(rel) {
+                    add_visible(abs);
+                }
+                if prev.is_floor() && curr.is_wall() {
+                    columns.push(col.top_slope(rel).next());
+                } else if prev.is_wall() && curr.is_floor() {
+                    columns.push(col.bottom_slope(rel));
+                    continue 'columns;
+                }
+                prev = curr;
+            }
+            if prev.is_floor() {
+                columns.push(col.next());
+            }
+        }
+    }
+    #[derive(EnumIs)]
+    enum Is { Wall, Floor, NA }
 }
 
 //Octants
-struct Octant { origin: Absolute, section: OctSection }
-impl Octant {
-    fn iter_from(origin: Absolute) -> impl Iterator<Item = Octant> {
+struct Octant {
+    origin: Position,
+    section: OctSection,
+} impl Octant {
+    fn iter_from(origin: Position) -> impl Iterator<Item = Octant> {
         OctSection::iter()
             .map(move |section| Octant { origin, section })
     }
 
-    fn to_absolute(&self, p: Relative) -> Absolute {
+    fn absolute(&self, rel: Relative) -> Position {
         let Point { x: ox, y: oy } = self.origin;
 
         use OctSection::*;
         match self.section {
-            LeftUp => Point { x: ox - p.x, y: oy - p.y },
-            LeftDown => Point { x: ox - p.x, y: oy + p.y },
-            RightUp => Point { x: ox + p.x, y: oy - p.y },
-            RightDown => Point { x: ox + p.x, y: oy + p.y },
-            UpLeft => Point { x: ox - p.y, y: oy - p.x },
-            UpRight => Point { x: ox + p.y, y: oy - p.x },
-            DownLeft => Point { x: ox - p.y, y: oy + p.x },
-            DownRight => Point { x: ox + p.y, y: oy + p.x },
+            LeftUp => Point { x: ox - rel.x, y: oy - rel.y },
+            LeftDown => Point { x: ox - rel.x, y: oy + rel.y },
+            RightUp => Point { x: ox + rel.x, y: oy - rel.y },
+            RightDown => Point { x: ox + rel.x, y: oy + rel.y },
+            UpLeft => Point { x: ox - rel.y, y: oy - rel.x },
+            UpRight => Point { x: ox + rel.y, y: oy - rel.x },
+            DownLeft => Point { x: ox - rel.y, y: oy + rel.x },
+            DownRight => Point { x: ox + rel.y, y: oy + rel.x },
         }
     }
 }
-use {strum::IntoEnumIterator, strum_macros::EnumIter};
-#[derive(Clone, Copy, EnumIter)]
+#[derive(EnumIter)]
 enum OctSection {
     LeftUp, LeftDown,
     RightUp, RightDown,
@@ -55,44 +118,67 @@ enum OctSection {
     DownLeft, DownRight,
 }
 
-use num_rational::Ratio;
-
 /// Represents a row in an octant.
 struct Col {
     depth: u16,
-    start_slope: Ratio<u16>,
-    end_slope: Ratio<u16>,
-}
-impl Col {
+    top_slope: Slope,
+    bottom_slope: Slope,
+} impl Col {
     fn first() -> Self {
-        Self { depth: 1, start_slope: 0.into(), end_slope: 1.into() }
+        Self { depth: 1, top_slope: 1.into(), bottom_slope: 0.into() }
     }
 
     fn next(&self) -> Self {
         Self { depth: self.depth + 1, ..*self }
     }
 
-    fn tiles(&self) -> impl Iterator<Item = Relative> + '_ {
-        let lower = (self.start_slope * self.depth).ceil().to_integer();
-        let upper = (self.end_slope * self.depth).floor().to_integer();
+    fn top_slope(&self, rel: Relative) -> Self {
+        Self { top_slope: slope(rel), ..*self }
+    }
+
+    fn bottom_slope(&self, rel: Relative) -> Self {
+        Self { bottom_slope: slope(rel), ..*self }
+    }
+
+    fn points(&self) -> impl Iterator<Item = Relative> + '_ {
+        let upper = round_half_down(self.top_slope * self.depth);
+        let lower = round_half_up(self.bottom_slope * self.depth);
         (lower..=upper).map(|y| Point { x: self.depth, y })
     }
 
-    fn is_symmetric(&self, p: Relative) -> bool {
-        todo!()
+    fn is_symmetric(&self, rel: Relative) -> bool {
+        let row = Ratio::from(rel.y);
+    
+        row >= self.bottom_slope * self.depth &&
+        row <= self.top_slope * self.depth
     }
 }
 
+// Convenience functions
+/// Calculate new slope from bottom of a tile.
+fn slope(p: Relative) -> Slope {
+    Ratio::new(2 * p.y - 1, 2 * p.x)
+}
+
+const HALF: Ratio<u16> = Ratio::new_raw(1, 2);
+
+fn round_half_down(n: Ratio<u16>) -> u16 {
+    (n - HALF).ceil().to_integer()
+}
+
+fn round_half_up(n: Ratio<u16>) -> u16 {
+    (n + HALF).floor().to_integer()
+}
+
 /// Simple FOV function that only checks tiles one tile from origin.
-pub fn compute_simple(
-    origin: Absolute,
-    _: impl Fn(Absolute) -> bool,
-    visible: &mut impl FnMut(Absolute),
+pub fn _compute_simple(
+    origin: Position,
+    mut add_visible: impl FnMut(Position),
 ) {
-    visible(origin);
+    add_visible(origin);
     for mov in crate::points::Move::iter() {
         let p = origin + mov;
-        visible(p)
+        add_visible(p)
     }
 }
 

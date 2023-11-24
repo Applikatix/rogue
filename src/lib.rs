@@ -1,17 +1,17 @@
 pub mod write;
+mod fov;
 mod points;
 pub mod util;
-#[cfg(test)]
-mod tests;
 
 use std::collections::HashMap;
 
 use crossterm::event::KeyCode;
 use petgraph::{Graph, Undirected, graph::NodeIndex};
 
-use points::{ Point, Position, Coord::{X, Y}, Coordinate,
+use points::{ Point, Position, Coord::{X, Y, self}, Coordinate,
     Rect, Space, Line, Straight, Area,
 };
+use strum_macros::EnumIs;
 
 pub struct GameWorld {
     map: Map,
@@ -70,45 +70,46 @@ enum Change {
 
 struct Map(Graph<MapElem, (), Undirected>); impl Map {
     fn visible_tiles(&self, p: Position) -> TileMap {
-        use {crate::points::Move, TileKind::*, ObjKind::*};
         let mut tiles = HashMap::new();
 
-        if self.contains_tile(p).is_some() {
-            tiles.insert(p, Obj(Player));
-        } else {
-            return tiles.into();
-        }
-        for mov in Move::iter() {
-            let mut pos = p + mov;
-            while let Some(kind) = self.get_tile(pos) {
-                tiles.insert(pos, kind);
-                if let Door | Wall(_) = kind {
-                    break;
+        let is_floor = |pos| {
+            if let Some(tile) = self.contains_tile(pos) {
+                if tile.is_clear() {
+                    return true;
                 }
-                pos += mov;
             }
-        }
+            false
+        };
+        let add_visible = |pos| {
+            if let Some(tile) = self.get_tile(pos) {
+                tiles.insert(pos, tile);
+            }
+        };
+
+        fov::compute(p, is_floor, add_visible);
+        tiles.insert(p, TileKind::Obj(ObjKind::Player));
 
         tiles.into()
     }
 
     fn get_tile(&self, p: Position) -> Option<TileKind> {
-        if let res @ Some(_) = self.contains_tile(p) {
-            return res;
+        for area in self.node_weights() {
+            if area.contains(p) {
+                return Some(area.into());
+            }
         }
-        for wall in self.walls() { if wall.contains(p) {
-            return match wall.c2 {
-                X(_) => Some(TileKind::Wall(Dir::Hor)),
-                Y(_) => Some(TileKind::Wall(Dir::Ver)),
-            };
-        }}
+        for wall in self.walls() {
+            if wall.contains(p) {
+                return Some(TileKind::Wall(wall.c2.into()));
+            }
+        }
         None
     }
 
     fn contains_tile(&self, p: Position) -> Option<TileKind> {
         for area in self.node_weights() {
             if area.contains(p) {
-                return area.into();
+                return Some(area.into());
             }
         }
         None
@@ -148,8 +149,8 @@ struct Map(Graph<MapElem, (), Undirected>); impl Map {
 }
 
 struct TileMap(HashMap<Position, TileKind>); impl TileMap {
-    fn tiles(&self) -> Tiles {
-        Tiles { iter: self.iter() }
+    fn tiles(&self) -> impl Iterator<Item = Tile> + '_ {
+        self.iter().map(|t| t.into())
     }
 
     fn difference<'a>(&'a self, other: &'a TileMap) -> Difference {
@@ -160,17 +161,21 @@ struct TileMap(HashMap<Position, TileKind>); impl TileMap {
         DifferenceKind { iter: self.iter(), other  }
     }
 }
-struct Tile { pos: Position, kind: TileKind }
-#[derive(Clone, Copy, PartialEq)]
+struct Tile {
+    pos: Position,
+    kind: TileKind,
+}
+#[derive(Clone, Copy, PartialEq, EnumIs)]
 enum TileKind {
+    Void,
     Obj(ObjKind),
     Door,
     Room,
     Hall(Dir),
     Wall(Dir),
 } impl TileKind {
-    fn is_obj(&self) -> bool {
-        if let Self::Obj(_) = self { true } else { false }
+    fn is_clear(&self) -> bool {
+        self.is_room() || self.is_hall() || self.is_obj()
     }
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -187,11 +192,11 @@ enum Dir { //None,
 
 #[derive(Default)]
 enum MapElem {
+    #[default]
+    Void,
     Room(Space),
     Hall(Straight),
     Door(Position),
-    #[default]
-    Void,
 }
 impl Area for MapElem {
     fn contains(&self, p: Position) -> bool {
@@ -274,16 +279,21 @@ impl From<(&Position, &TileKind)> for Tile {
     }
 }
 
-impl From<&MapElem> for Option<TileKind> {
+impl From<&MapElem> for TileKind {
     fn from(area: &MapElem) -> Self {
         match area {
-            MapElem::Room(_) => Some(TileKind::Room),
-            MapElem::Hall(hall) => match hall.c2 {
-                X(_) => Some(TileKind::Hall(Dir::Hor)),
-                Y(_) => Some(TileKind::Hall(Dir::Ver)),
-            },
-            MapElem::Door(_) => Some(TileKind::Door),
-            MapElem::Void => None,
+            MapElem::Room(_) => Self::Room,
+            MapElem::Hall(hall) => Self::Hall(hall.c2.into()),
+            MapElem::Door(_) => Self::Door,
+            MapElem::Void => Self::Void,
+        }
+    }
+}
+impl<N> From<Coord<N>> for Dir {
+    fn from(coord: Coord<N>) -> Self {
+        match coord {
+            X(_) => Dir::Hor,
+            Y(_) => Dir::Ver,
         }
     }
 }
@@ -317,16 +327,6 @@ impl Deref for TileMap {
 
 //Iterators
 use std::collections::hash_map::Iter;
-struct Tiles<'a> {
-    iter: Iter<'a, Position, TileKind>
-} impl Iterator for Tiles<'_> {
-    type Item = Tile;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let tile = self.iter.next()?.into();
-        Some(tile)
-    }
-}
 
 struct Difference<'a> {
     iter: Iter<'a, Position, TileKind>,

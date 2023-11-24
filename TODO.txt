@@ -3,10 +3,10 @@
   # Udseende
     * Vægge
     * Døre
-
-# Igang
   # Kort
     * Synlighed
+
+# Igang
 
 # Næste
   # Kort

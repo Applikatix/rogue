@@ -7,7 +7,7 @@ fn octant_transform() {
     
     let mut points =
         Octant::iter_from(origin)
-        .map(|oct| oct.to_absolute(rel));
+        .map(|oct| oct.absolute(rel));
 
     assert_eq!(Some(Point { x: 6, y: 3 }), points.next());
     assert_eq!(Some(Point { x: 6, y: 7 }), points.next());
@@ -34,40 +34,40 @@ fn octant_transform() {
 #[test]
 fn rows() {
     let row = Col { depth: 1,
-        start_slope: Ratio::from(0),
-        end_slope: Ratio::from(1),
+        bottom_slope: Ratio::from(0),
+        top_slope: Ratio::from(1),
     };
-    let mut tiles = row.tiles();
+    let mut tiles = row.points();
     assert_eq!(Some(Point { x: 1, y: 0 }), tiles.next());
     assert_eq!(Some(Point { x: 1, y: 1 }), tiles.next());
     assert_eq!(None, tiles.next());
 
     let row = row.next();
-    let mut tiles = row.tiles();
+    let mut tiles = row.points();
     assert_eq!(Some(Point { x: 2, y: 0 }), tiles.next());
     assert_eq!(Some(Point { x: 2, y: 1 }), tiles.next());
     assert_eq!(Some(Point { x: 2, y: 2 }), tiles.next());
     assert_eq!(None, tiles.next());
 
-    let row2 = Col { end_slope: Ratio::from((6, 10)), ..row };
-    let mut tiles = row2.tiles();
+    let row2 = Col { top_slope: Ratio::from((6, 10)), ..row };
+    let mut tiles = row2.points();
     assert_eq!(Some(Point { x: 2, y: 0 }), tiles.next());
     assert_eq!(Some(Point { x: 2, y: 1 }), tiles.next());
     assert_eq!(None, tiles.next());
 
-    let row2 = Col { end_slope: Ratio::from((4, 10)), ..row };
-    let mut tiles = row2.tiles();
+    let row2 = Col { top_slope: Ratio::from((4, 10)), ..row };
+    let mut tiles = row2.points();
     assert_eq!(Some(Point { x: 2, y: 0 }), tiles.next());
     assert_eq!(None, tiles.next());
 
-    let row2 = Col { start_slope: Ratio::from((4, 10)), ..row };
-    let mut tiles = row2.tiles();
+    let row2 = Col { bottom_slope: Ratio::from((4, 10)), ..row };
+    let mut tiles = row2.points();
     assert_eq!(Some(Point { x: 2, y: 1 }), tiles.next());
     assert_eq!(Some(Point { x: 2, y: 2 }), tiles.next());
     assert_eq!(None, tiles.next());
 
-    let row2 = Col { start_slope: Ratio::from((6, 10)), ..row };
-    let mut tiles = row2.tiles();
+    let row2 = Col { bottom_slope: Ratio::from((6, 10)), ..row };
+    let mut tiles = row2.points();
     assert_eq!(Some(Point { x: 2, y: 2 }), tiles.next());
     assert_eq!(None, tiles.next());
 }

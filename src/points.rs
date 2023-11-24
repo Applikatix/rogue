@@ -9,16 +9,16 @@ pub type Straight = Line<u16>;
 pub type Position = Point<u16>;
 pub type Coordinate = Coord<u16>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Hash, Debug)]
 pub struct Point<N> { pub x: N, pub y: N }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Coord<N> { X(N), Y(N) }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rect<N>{ pub p1: Point<N>, pub p2: Point<N> }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Line<N>{ pub p1: Point<N>, pub c2: Coord<N> }
 
 //Convenience functions for creating rooms and paths.
@@ -38,9 +38,21 @@ impl<N: Add<Output = N> + Copy> Line<N> {
     }}
 }
 
+//Conversion to and from tuples
+impl<N> From<(N, N)> for Point<N> {
+    fn from((x, y): (N, N)) -> Self {
+        Point { x, y }
+    }
+} impl<N> From<Point<N>> for (N, N) {
+    fn from(p: Point<N>) -> Self {
+        (p.x, p.y)
+    }
+}
+
 //Moving position
+use {strum::IntoEnumIterator, strum_macros::EnumIter};
 use Move::*;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, EnumIter)]
 pub enum Move { Up, Down, Left, Right, LU, LD, RU, RD } impl Move {
     fn r#move(self, p: Position) -> Position {
         match self {
@@ -57,10 +69,6 @@ pub enum Move { Up, Down, Left, Right, LU, LD, RU, RD } impl Move {
 
     pub fn mover(self) -> impl Fn(Position) -> Position {
         move |p| self.r#move(p)
-    }
-
-    pub fn iter() -> impl Iterator<Item = Move> {
-        [Up, Down, Left, Right, LU, LD, RU, RD].iter().copied()
     }
 
     pub fn movers() -> impl Iterator<Item = impl Fn(Position) -> Position> {

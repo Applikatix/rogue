@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 fn run(out: &mut impl Write) -> Result<()> {
     let mut world = rogue::custom_world();
 
-    world.print_alt(out, Default::default())?;
+    world.print(out, Default::default())?;
 
     loop {
         let key = rogue::util::input()?;
@@ -34,7 +34,7 @@ fn run(out: &mut impl Write) -> Result<()> {
         }
 
         let next = world.next(key);
-        world.print_alt(out, next)?;
+        world.print(out, next)?;
         world.update(next);
     }
 }
