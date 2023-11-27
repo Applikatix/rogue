@@ -1,5 +1,6 @@
 pub mod write;
 mod fov;
+mod map;
 mod points;
 pub mod util;
 
@@ -228,22 +229,22 @@ impl Area for MapElem {
 pub fn custom_world() -> GameWorld {
     let mut map = Map(Graph::new_undirected());
 
-    let a = map.add_node(room(10, 2, 5, 3));
-    let b = map.add_node(room(5, 8, 11, 4));
-    let c = map.add_node(room(24, 10, 8, 2));
-    let d = map.add_node(room(25, 1, 2, 5));
-    let e = map.add_node(room(28, 1, 4, 3));
-    let a1 = map.add_node(door(15, 3));
-    let b1 = map.add_node(door(16, 9));
-    let c1 = map.add_node(door(23, 10));
-    let c2 = map.add_node(door(26, 9));
-    let d1 = map.add_node(door(26, 6));
-    let de = map.add_node(door(27, 2));
-    let p = map.add_node(hall(18, 3, Y(8)));
-    let a1p = map.add_node(hall(16, 3, X(2)));
-    let b1p = map.add_node(hall(17, 9, X(1)));
-    let pc1 = map.add_node(hall(19, 10, X(4)));
-    let d1c2 = map.add_node(hall(26, 7, Y(2)));
+    let a = map.add_node(room(10, 4, 5, 3));
+    let b = map.add_node(room(5, 10, 11, 4));
+    let c = map.add_node(room(24, 12, 8, 2));
+    let d = map.add_node(room(25, 3, 2, 5));
+    let e = map.add_node(room(28, 3, 4, 3));
+    let a1 = map.add_node(door(15, 5));
+    let b1 = map.add_node(door(16, 11));
+    let c1 = map.add_node(door(23, 12));
+    let c2 = map.add_node(door(26, 11));
+    let d1 = map.add_node(door(26, 8));
+    let de = map.add_node(door(27, 4));
+    let p = map.add_node(hall(18, 5, Y(8)));
+    let a1p = map.add_node(hall(16, 5, X(2)));
+    let b1p = map.add_node(hall(17, 11, X(1)));
+    let pc1 = map.add_node(hall(19, 12, X(4)));
+    let d1c2 = map.add_node(hall(26, 9, Y(2)));
 
     map.extend_with_edges(&[
         (a, a1), (b, b1), (c, c1), (c, c2), (d, d1), (d, de), (de, e),

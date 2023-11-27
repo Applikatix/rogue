@@ -15,40 +15,6 @@ type Relative = Position;
 */
 type Slope = Ratio<u16>;
 
-pub fn _compute_exp(
-    origin: Position,
-    is_floor: impl Fn(Position) -> bool,
-    mut add_visible: impl FnMut(Position),
-) {
-    add_visible(origin);
-    let oct = Octant { origin, section: OctSection::RightUp };
-    
-    let mut columns = vec![Col::first()];
-    'columns: while let Some(col) = columns.pop() { use Is::*;
-        let mut prev = NA;
-        for rel in col.points() {
-            let abs = oct.absolute(rel);
-            let curr = if is_floor(abs) { Floor } else { Wall };
-
-            if curr.is_wall() || col.is_symmetric(rel) {
-                add_visible(abs);
-            }
-            if prev.is_floor() && curr.is_wall() {
-                columns.push(col.top_slope(rel).next());
-            } else if prev.is_wall() && curr.is_floor() {
-                columns.push(col.bottom_slope(rel));
-                continue 'columns;
-            }
-            prev = curr;
-        }
-        if prev.is_floor() {
-            columns.push(col.next());
-        }
-    }
-    #[derive(EnumIs)]
-    enum Is { Wall, Floor, NA }
-}
-
 /// Shadowcasting FOV function.
 pub fn compute(
     origin: Position,

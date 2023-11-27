@@ -1,18 +1,19 @@
 use std::io::{Write, Result};
 
 use crossterm::{queue,
-    cursor::MoveTo,
+    cursor::{MoveTo, MoveToColumn},
     style::{Print, SetForegroundColor, Color, ResetColor}};
 
 use super::{GameWorld, Next, Dir, Tile, TileMap};
 
 const FADE_COLOUR: SetForegroundColor = SetForegroundColor(Color::DarkGrey);
 
-//Tiles
 impl GameWorld {
     pub fn print(&self, out: &mut impl Write, next: Next) -> Result<()> {
         use super::Change::*;
         let Self { player, map } = self;
+        
+        draw_frame(0, 60, 0, 18, out)?;
 
         match next.0 {
             Nothing => return Ok(()),
@@ -33,6 +34,7 @@ impl GameWorld {
 
 impl TileMap {
     fn draw(&self, out: &mut impl Write) -> Result<()> {
+        queue!(out, ResetColor)?;
         for tile in self.tiles() {
             tile.draw(out)?;
         }
@@ -40,6 +42,7 @@ impl TileMap {
     }
 
     fn draw_new(&self, out: &mut impl Write, old: &TileMap) -> Result<()> {
+        queue!(out, ResetColor)?;
         for tile in self.difference_player(old) {
             tile.draw(out)?;
         }
@@ -51,7 +54,7 @@ impl TileMap {
         for tile in self.difference(new) {
             tile.clear(out)?;
         }
-        queue!(out, ResetColor)
+        Ok(())
     }
 }
 
@@ -90,4 +93,31 @@ impl From<Dir> for char {
             //All => '┼',
         }
     }
+}
+
+fn draw_frame(
+    left: u16, right: u16, top: u16, bottom: u16,
+    out: &mut impl Write,
+) -> Result<()> {
+    
+    queue!(out, FADE_COLOUR)?;
+
+    queue!(out, MoveTo(left, top), Print('╔'))?;
+    for _ in (left + 1)..right {
+        queue!(out, Print('═'))?;
+    }
+    queue!(out, Print('╗'))?;
+
+    for row in (top + 1)..bottom {
+        queue!(out, MoveTo(left, row), Print('║'))?;
+        queue!(out, MoveToColumn(right), Print('║'))?;
+    }
+
+    queue!(out, MoveTo(left, bottom), Print('╚'))?;
+    for _ in (left + 1)..right {
+        queue!(out, Print('═'))?;
+    }
+    queue!(out, Print('╝'))?;
+
+    Ok(())
 }
