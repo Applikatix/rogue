@@ -10,10 +10,11 @@
 
 # Næste
   # Kort
-    * Irregulærer rum
     * Random level generation
 
 # Mål
+  # Kort
+    * Irregulærer rum
   # GUI
     * Menuer
     * HUD

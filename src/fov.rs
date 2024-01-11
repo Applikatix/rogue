@@ -1,5 +1,5 @@
 use num_rational::Ratio;
-use {strum::IntoEnumIterator, strum_macros::{EnumIter, EnumIs}};
+use {strum::IntoEnumIterator, strum_macros::EnumIter};
 
 use crate::points::{Position, Point};
 
@@ -24,30 +24,31 @@ pub fn compute(
     add_visible(origin);
     for oct in Octant::iter_from(origin) {
         let mut columns = vec![Col::first()];
-        'columns: while let Some(col) = columns.pop() { use Is::*;
+        'columns: while let Some(col) = columns.pop() {
+            use TileType::*;
             let mut prev = NA;
             for rel in col.points() {
                 let abs = oct.absolute(rel);
                 let curr = if is_floor(abs) { Floor } else { Wall };
 
-                if curr.is_wall() || col.is_symmetric(rel) {
+                if curr == Wall || col.is_symmetric(rel) {
                     add_visible(abs);
                 }
-                if prev.is_floor() && curr.is_wall() {
+                if prev == Floor && curr == Wall {
                     columns.push(col.top_slope(rel).next());
-                } else if prev.is_wall() && curr.is_floor() {
+                } else if prev == Wall && curr == Floor {
                     columns.push(col.bottom_slope(rel));
                     continue 'columns;
                 }
                 prev = curr;
             }
-            if prev.is_floor() {
+            if prev == Floor {
                 columns.push(col.next());
             }
         }
     }
-    #[derive(EnumIs)]
-    enum Is { Wall, Floor, NA }
+    #[derive(PartialEq)]
+    enum TileType { Wall, Floor, NA }
 }
 
 //Octants

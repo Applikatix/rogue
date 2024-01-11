@@ -1,6 +1,6 @@
 pub mod arithmatic;
 
-use std::{ops::Add, iter};
+use std::{ops::{Add, Sub}, iter};
 
 use crate::util::average;
 
@@ -16,26 +16,67 @@ pub struct Point<N> { pub x: N, pub y: N }
 pub enum Coord<N> { X(N), Y(N) }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Rect<N>{ pub p1: Point<N>, pub p2: Point<N> }
+pub struct Rect<N>{ pub pos: Point<N>, pub end: Point<N> }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Line<N>{ pub p1: Point<N>, pub c2: Coord<N> }
+pub struct Line<N>{ pub pos: Point<N>, pub end: Coord<N> }
 
-//Convenience functions for creating rooms and paths.
-impl<N: Add<Output = N> + Copy> Rect<N> {
-    pub fn new(x: N, y: N, width: N, height: N) -> Rect<N> {
-        Self {
-            p1: Point { x, y },
-            p2: Point { x: x + width, y: y + height },
+//Convenience functions
+
+// #Properties
+impl<N: Sub<Output = N> + Copy> Rect<N> {
+    pub fn size(&self) -> Point<N> {
+        Point { x: self.end.x - self.pos.x, y: self.end.y - self.pos.y }
+    }
+    pub fn width(&self) -> N { self.end.x - self.pos.x }
+    pub fn height(&self) -> N { self.end.y - self.pos.y }
+}
+
+impl<N: Sub<Output = N> + Copy> Line<N> {
+    pub fn len(&self) -> N {
+        match self.end {
+            Coord::X(end) => end - self.pos.x,
+            Coord::Y(end) => end - self.pos.y,
         }
     }
 }
 
+// #Creating new instances from existing instances
+impl<N> Point<N> {
+    pub fn x(self, x: N) -> Self { Point { x, ..self } }
+    pub fn y(self, y: N) -> Self { Point { y, ..self } }
+}
+
+impl<N> Rect<N> {
+    pub fn pos(self, pos: Point<N>) -> Self { Rect { pos, ..self } }
+    pub fn end(self, end: Point<N>) -> Self { Rect { end, ..self } }
+    pub fn pos_x(self, x: N) -> Self { Rect { pos: self.pos.x(x), ..self } }
+    pub fn pos_y(self, y: N) -> Self { Rect { pos: self.pos.y(y), ..self } }
+    pub fn end_x(self, x: N) -> Self { Rect { end: self.end.x(x), ..self } }
+    pub fn end_y(self, y: N) -> Self { Rect { end: self.end.y(y), ..self } }
+}
+
+// #Creating rooms and paths.
+impl<N: Add<Output = N> + Copy> Rect<N> {
+    pub fn new(x: N, y: N, width: N, height: N) -> Self {
+        Self {
+            pos: Point { x, y },
+            end: Point { x: x + width, y: y + height },
+        }
+    }
+    pub fn new_exact(x: N, y: N, endx: N, endy: N) -> Self {
+        Self { pos: Point { x, y }, end: Point { x: endx, y: endy } }
+    }
+}
+
 impl<N: Add<Output = N> + Copy> Line<N> {
-    pub fn new(x: N, y: N, length: Coord<N>) -> Line<N> { match length {
-        Coord::X(cx) => Self { p1: Point { x, y }, c2: Coord::X(x + cx) },
-        Coord::Y(cy) => Self { p1: Point { x, y }, c2: Coord::Y(y + cy) },
-    }}
+    pub fn new(x: N, y: N, length: Coord<N>) -> Self { match length {
+        Coord::X(cx) => Self { pos: Point { x, y }, end: Coord::X(x + cx) },
+        Coord::Y(cy) => Self { pos: Point { x, y }, end: Coord::Y(y + cy) },
+    } }
+    pub fn new_exact(x: N, y: N, end: Coord<N>) -> Self {
+        Self { pos: Point { x, y }, end }
+    }
 }
 
 //Conversion to and from tuples
@@ -94,14 +135,14 @@ impl Area for Position {
 
 impl Area for Space {
     fn contains(&self, p: Position) -> bool {
-        let Rect { p1, p2 } = self;
+        let Rect { pos: p1, end: p2 } = self;
 
         p1.x <= p.x && p.x < p2.x &&
         p1.y <= p.y && p.y < p2.y
     }
 
     fn middle(&self) -> Position {
-        let Rect { p1, p2 } = self;
+        let Rect { pos: p1, end: p2 } = self;
 
         Point {
             x: average(p1.x, p2.x),
@@ -112,7 +153,7 @@ impl Area for Space {
 
 impl Area for Straight {
     fn contains(&self, p: Position) -> bool {
-        let Line { p1, c2 } = *self;
+        let Line { pos: p1, end: c2 } = *self;
 
         match c2 {
             Coord::X(cx) => p1.y == p.y && p1.x <= p.x && p.x < cx,
@@ -121,7 +162,7 @@ impl Area for Straight {
     }
 
     fn middle(&self) -> Position {
-        let Line { p1, c2 } = *self;
+        let Line { pos: p1, end: c2 } = *self;
         
         match c2 {
             Coord::X(cx) => Point { x: average(p1.x, cx), ..p1 },
@@ -184,14 +225,14 @@ impl IntoIterator for Space {
     type IntoIter = RectPoints;
 
     fn into_iter(self) -> Self::IntoIter {
-        RectPoints { next: self.p1, left: self.p1.x, end: self.p2 }
+        RectPoints { next: self.pos, left: self.pos.x, end: self.end }
     }
 } impl IntoIterator for &Space {
     type Item = Position;
     type IntoIter = RectPoints;
 
     fn into_iter(self) -> Self::IntoIter {
-        RectPoints { next: self.p1, left: self.p1.x, end: self.p2 }
+        RectPoints { next: self.pos, left: self.pos.x, end: self.end }
     }
 }
 pub struct RectPoints {
@@ -223,7 +264,7 @@ impl Points for Space {
     type StripsIter = RectStrips;
 
     fn strips(self) -> Self::StripsIter {
-        RectStrips { next: self.p1, end: self.p2 }
+        RectStrips { next: self.pos, end: self.end }
     }
 } 
 pub struct RectStrips {
@@ -248,14 +289,14 @@ impl IntoIterator for Straight {
     type IntoIter = LongPoints;
 
     fn into_iter(self) -> Self::IntoIter {
-        LongPoints { next: self.p1, end: self.c2 }
+        LongPoints { next: self.pos, end: self.end }
     }
 } impl IntoIterator for &Straight {
     type Item = Position;
     type IntoIter = LongPoints;
 
     fn into_iter(self) -> Self::IntoIter {
-        LongPoints { next: self.p1, end: self.c2 }
+        LongPoints { next: self.pos, end: self.end }
     }
 }
 pub struct LongPoints {
@@ -284,7 +325,7 @@ impl Points for Straight {
     type StripsIter = LongStrips;
 
     fn strips(self) -> Self::StripsIter {
-        LongStrips { next: self.p1, end: Some(self.c2) }
+        LongStrips { next: self.pos, end: Some(self.end) }
     }
 }
 pub struct LongStrips {

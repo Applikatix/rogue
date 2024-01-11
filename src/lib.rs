@@ -110,7 +110,7 @@ struct Map(Graph<MapElem, (), Undirected>); impl Map {
             if area.contains(p) {
                 return match area {
                     MapElem::Room(_) => Some(Room),
-                    MapElem::Hall(hall) => Some(Hall(hall.c2.into())),
+                    MapElem::Hall(hall) => Some(Hall(hall.end.into())),
                     MapElem::Door(_) => Some(Door),
                     MapElem::Void => None,
                 };
@@ -130,17 +130,17 @@ struct Map(Graph<MapElem, (), Undirected>); impl Map {
             points.insert(Point { x: left, y: bottom }, Dir::DL);
             points.insert(Point { x: right, y: bottom }, Dir::DR);
 
-            for x in room.p1.x..right {
+            for x in room.pos.x..right {
                 points.insert(Point { x, y: top }, Dir::Hor);
                 points.insert(Point { x, y: bottom }, Dir::Hor);
             }
-            for y in room.p1.y..bottom {
+            for y in room.pos.y..bottom {
                 points.insert(Point { x: left, y }, Dir::Ver);
                 points.insert(Point { x: right, y }, Dir::Ver);
             }
             
             fn perimeter(room: Space) -> (u16, u16, u16, u16) {
-                (room.p1.x - 1, room.p2.x, room.p1.y - 1, room.p2.y)
+                (room.pos.x - 1, room.end.x, room.pos.y - 1, room.end.y)
             }
         }
         points.into_iter()
